@@ -88,6 +88,23 @@ npm run dev
 
 Open http://localhost:5173 — Vite proxies `/api` to the backend.
 
+### 3. Plaid bank onboarding (optional)
+
+1. Create a [Plaid](https://dashboard.plaid.com) account and copy your **sandbox** `client_id` and `secret`.
+2. Copy `backend/.env.example` to `backend/.env` and set:
+
+```bash
+PLAID_CLIENT_ID=your_client_id
+PLAID_SECRET=your_sandbox_secret
+PLAID_ENV=sandbox
+```
+
+3. Restart the backend, then click **Get started** on the landing page.
+4. Use **Connect bank with Plaid** (sandbox: try *First Platypus Bank* with test credentials).
+5. Transactions sync automatically; you are redirected to the dashboard.
+
+Without Plaid keys, the connect screen offers **Continue with demo data** (mock transactions).
+
 ## API routes
 
 | Method | Path | Description |
@@ -101,6 +118,10 @@ Open http://localhost:5173 — Vite proxies `/api` to the backend.
 | GET | `/api-costs/insights` | Optimization patterns & savings |
 | POST | `/api-costs/mock-call` | Log a simulated API call |
 | GET | `/auth/me` | Mock authenticated user |
+| POST | `/plaid/link-token` | Create Plaid Link token |
+| POST | `/plaid/exchange-public-token` | Exchange public token + sync transactions |
+| POST | `/plaid/sync-transactions` | Incremental Plaid transaction sync |
+| GET | `/plaid/status` | Plaid connection status |
 
 Default account ID: `acct_main`
 
@@ -111,6 +132,9 @@ Default account ID: `acct_main`
 | `DATABASE_URL` | `postgresql://flowcast:flowcast@localhost:5432/flowcast` |
 | `CORS_ORIGINS` | `http://localhost:5173` |
 | `BALANCE_THRESHOLD_USD` | `2000` |
+| `PLAID_CLIENT_ID` | — (required for Plaid Link) |
+| `PLAID_SECRET` | — |
+| `PLAID_ENV` | `sandbox` |
 
 ## Future improvements
 

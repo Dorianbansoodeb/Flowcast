@@ -36,6 +36,24 @@ class Transaction(Base):
     )
 
 
+class PlaidConnection(Base):
+    """Stored Plaid item for a Flowcast account (sandbox / production)."""
+
+    __tablename__ = "plaid_connections"
+
+    account_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    item_id: Mapped[str] = mapped_column(String(128), unique=True)
+    access_token: Mapped[str] = mapped_column(String(512))
+    institution_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    sync_cursor: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class ApiUsageLog(Base):
     """
     Time-series API usage log. Primary key + time index supports future

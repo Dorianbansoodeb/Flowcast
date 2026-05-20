@@ -97,6 +97,34 @@ export interface ApiInsightsResponse {
   summary: ApiCostSummary;
 }
 
+export interface PlaidStatus {
+  plaid_configured: boolean;
+  plaid_env: string | null;
+  linked: boolean;
+  institution_name: string | null;
+  item_id: string | null;
+  transaction_count: number;
+}
+
+export interface PlaidLinkToken {
+  link_token: string;
+  expiration?: string;
+  plaid_env: string;
+}
+
+export interface PlaidExchangeResult {
+  message: string;
+  account_id: string;
+  item_id: string;
+  institution_name: string | null;
+  sync: {
+    added: number;
+    modified: number;
+    removed: number;
+    current_balance: number;
+  };
+}
+
 export const api = {
   getMe: () => request<User>("/auth/me"),
   getTransactions: (accountId = ACCOUNT_ID) =>
@@ -122,5 +150,25 @@ export const api = {
     request<{ cost_usd: number }>("/api-costs/mock-call", {
       method: "POST",
       body: JSON.stringify({ endpoint, account_id: ACCOUNT_ID, status }),
+    }),
+  getPlaidStatus: (accountId = ACCOUNT_ID) =>
+    request<PlaidStatus>(`/plaid/status?account_id=${accountId}`),
+  createPlaidLinkToken: (accountId = ACCOUNT_ID) =>
+    request<PlaidLinkToken>("/plaid/link-token", {
+      method: "POST",
+      body: JSON.stringify({ account_id: accountId }),
+    }),
+  exchangePlaidPublicToken: (publicToken: string, accountId = ACCOUNT_ID) =>
+    request<PlaidExchangeResult>("/plaid/exchange-public-token", {
+      method: "POST",
+      body: JSON.stringify({ public_token: publicToken, account_id: accountId }),
+    }),
+  syncPlaidTransactions: (accountId = ACCOUNT_ID, replaceExisting = false) =>
+    request<PlaidExchangeResult["sync"]>("/plaid/sync-transactions", {
+      method: "POST",
+      body: JSON.stringify({
+        account_id: accountId,
+        replace_existing: replaceExisting,
+      }),
     }),
 };

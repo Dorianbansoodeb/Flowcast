@@ -9,8 +9,16 @@ class Settings(BaseSettings):
     balance_threshold_usd: float = 2000.0
     forecast_days: int = 90
 
+    plaid_client_id: str = ""
+    plaid_secret: str = ""
+    plaid_env: str = "sandbox"
+
     class Config:
         env_file = ".env"
+
+    @property
+    def plaid_configured(self) -> bool:
+        return bool(self.plaid_client_id and self.plaid_secret)
 
 
 settings = Settings()

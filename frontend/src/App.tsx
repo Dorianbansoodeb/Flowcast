@@ -6,11 +6,13 @@ import { ForecastPage } from "./pages/ForecastPage";
 import { ApiCostsPage } from "./pages/ApiCostsPage";
 import { TransactionsPage } from "./pages/TransactionsPage";
 import { AlertsPage } from "./pages/AlertsPage";
+import { ConnectBankPage } from "./pages/ConnectBankPage";
 
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
+      <Route path="/connect-bank" element={<ConnectBankPage />} />
       <Route element={<AppLayout />}>
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/forecast" element={<ForecastPage />} />

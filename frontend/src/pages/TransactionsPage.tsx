@@ -42,8 +42,7 @@ export function TransactionsPage() {
       <header className="page-header">
         <h1>Transactions</h1>
         <p>
-          Sandbox transaction history — recurring income, payroll, rent, and more.
-          {/* PLAID: Sync from Plaid /transactions/sync */}
+          Transaction history from your linked business bank (Plaid) or sandbox mock data.
         </p>
       </header>
 

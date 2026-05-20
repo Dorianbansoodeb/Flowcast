@@ -7,8 +7,8 @@ export function LandingPage() {
         <Link to="/" className="brand-name" style={{ fontSize: "1.5rem" }}>
           Flowcast
         </Link>
-        <Link to="/dashboard" className="btn btn-primary">
-          Open dashboard
+        <Link to="/connect-bank" className="btn btn-primary">
+          Get started
         </Link>
       </nav>
       <section className="landing-hero">
@@ -18,7 +18,7 @@ export function LandingPage() {
           balance dips early, and cut unnecessary banking API spend.
         </p>
         <div style={{ display: "flex", gap: "1rem", justifyContent: "center", flexWrap: "wrap" }}>
-          <Link to="/dashboard" className="btn btn-primary">
+          <Link to="/connect-bank" className="btn btn-primary">
             Get started
           </Link>
           <Link to="/forecast" className="btn">

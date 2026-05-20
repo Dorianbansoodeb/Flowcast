@@ -24,6 +24,45 @@ class MockLoadRequest(BaseModel):
     seed_api: bool = True
 
 
+class PlaidLinkTokenRequest(BaseModel):
+    account_id: str = "acct_main"
+
+
+class PlaidLinkTokenResponse(BaseModel):
+    link_token: str
+    expiration: Optional[str] = None
+    plaid_env: str = "sandbox"
+
+
+class PlaidExchangeRequest(BaseModel):
+    public_token: str
+    account_id: str = "acct_main"
+
+
+class PlaidSyncRequest(BaseModel):
+    account_id: str = "acct_main"
+    replace_existing: bool = False
+
+
+class PlaidSyncResponse(BaseModel):
+    account_id: str
+    added: int
+    modified: int
+    removed: int
+    sync_pages: int
+    current_balance: float
+    institution_name: Optional[str] = None
+
+
+class PlaidStatusResponse(BaseModel):
+    plaid_configured: bool
+    plaid_env: Optional[str] = None
+    linked: bool
+    institution_name: Optional[str] = None
+    item_id: Optional[str] = None
+    transaction_count: int
+
+
 class MockApiCallRequest(BaseModel):
     endpoint: str = "/transactions/get"
     account_id: str = "acct_main"
