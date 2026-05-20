@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+backend/.venv/
+backend/venv/
+__pycache__/
+*.py[cod]
+.Python
+
+# Env
+.env
+.env.local
+
+# Build
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+*.egg-info/
+
+# Local database
+backend/flowcast.db
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: flowcast
+      POSTGRES_PASSWORD: flowcast
+      POSTGRES_DB: flowcast
+    ports:
+      - "5432:5432"
+    volumes:
+      - flowcast_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowcast -d flowcast"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  flowcast_pgdata:
