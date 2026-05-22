@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -32,7 +34,7 @@ def _connect_response(conn) -> PlaidConnectResponse:
 
 @router.get("/status", response_model=PlaidStatusResponse)
 def get_plaid_status(
-    account_id: str | None = None,
+    account_id: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     account_id = account_id or settings.default_account_id
