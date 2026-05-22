@@ -36,7 +36,9 @@ flowcast/
 │   │   ├── api/       # API client
 │   │   ├── charts/    # Recharts components
 │   │   ├── components/
-│   │   └── pages/
+│   │   ├── hooks/     # Plaid Link flow
+│   │   ├── lib/       # Onboarding session helpers
+│   │   └── pages/     # Landing, onboarding, link bank, dashboard
 ├── backend/           # FastAPI application
 │   ├── routers/
 │   ├── services/      # Forecasting, alerts, API insights
@@ -88,10 +90,17 @@ npm run dev
 
 Open http://localhost:5173 — Vite proxies `/api` to the backend.
 
-### 3. Plaid bank onboarding (optional)
+### 3. Onboarding flow
 
-1. Create a [Plaid](https://dashboard.plaid.com) account and copy your **sandbox** `client_id` and `secret`.
-2. Copy `backend/.env.example` to `backend/.env` and set:
+1. Open http://localhost:5173 and click **Get started**.
+2. On the setup screen, click **Connect Account** → full-screen bank connect page (`/onboarding/connect`).
+3. Choose **account type** and **bank**, then:
+   - **Demo mode** (no Plaid keys): enter business name → **Connect demo bank**
+   - **Plaid mode**: add keys to `backend/.env` (see below) → **Continue to Plaid sign-in**
+4. Back on setup, click **Sync Now** to import transactions.
+5. Click **Go to Dashboard**.
+
+**Plaid keys (optional):** copy `backend/.env.example` to `backend/.env`:
 
 ```bash
 PLAID_CLIENT_ID=your_client_id
@@ -99,11 +108,9 @@ PLAID_SECRET=your_sandbox_secret
 PLAID_ENV=sandbox
 ```
 
-3. Restart the backend, then click **Get started** on the landing page.
-4. Use **Connect bank with Plaid** (sandbox: try *First Platypus Bank* with test credentials).
-5. Transactions sync automatically; you are redirected to the dashboard.
+Sandbox tip: in Plaid Link, use *First Platypus Bank* with the test credentials Plaid provides.
 
-Without Plaid keys, the connect screen offers **Continue with demo data** (mock transactions).
+**Both backend and frontend must be running** — the connect page calls `GET /plaid/status` on the API (proxied via Vite at `/api`).
 
 ## API routes
 
@@ -119,9 +126,10 @@ Without Plaid keys, the connect screen offers **Continue with demo data** (mock 
 | POST | `/api-costs/mock-call` | Log a simulated API call |
 | GET | `/auth/me` | Mock authenticated user |
 | POST | `/plaid/link-token` | Create Plaid Link token |
-| POST | `/plaid/exchange-public-token` | Exchange public token + sync transactions |
-| POST | `/plaid/sync-transactions` | Incremental Plaid transaction sync |
-| GET | `/plaid/status` | Plaid connection status |
+| POST | `/plaid/demo-connect` | Connect demo bank (no Plaid keys) |
+| POST | `/plaid/exchange-public-token` | Exchange Plaid public token after Link |
+| POST | `/plaid/sync-transactions` | Sync transactions (Plaid or demo) |
+| GET | `/plaid/status` | Plaid / bank connection status |
 
 Default account ID: `acct_main`
 

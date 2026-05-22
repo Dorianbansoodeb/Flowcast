@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from config import settings
 from database.connection import get_db
 from schemas import (
+    PlaidConnectResponse,
+    PlaidDemoConnectRequest,
     PlaidExchangeRequest,
     PlaidLinkTokenRequest,
     PlaidLinkTokenResponse,
@@ -14,6 +16,18 @@ from schemas import (
 from services import plaid_service
 
 router = APIRouter(prefix="/plaid", tags=["plaid"])
+
+
+def _connect_response(conn) -> PlaidConnectResponse:
+    return PlaidConnectResponse(
+        message="Bank account connected",
+        account_id=conn.account_id,
+        item_id=conn.item_id,
+        institution_name=conn.institution_name,
+        account_type=conn.account_type,
+        bank_name=conn.bank_name,
+        is_demo=conn.is_demo,
+    )
 
 
 @router.get("/status", response_model=PlaidStatusResponse)
@@ -36,18 +50,30 @@ def create_link_token(body: PlaidLinkTokenRequest):
     )
 
 
-@router.post("/exchange-public-token")
+@router.post("/demo-connect", response_model=PlaidConnectResponse)
+def demo_connect(body: PlaidDemoConnectRequest, db: Session = Depends(get_db)):
+    account_id = body.account_id or settings.default_account_id
+    conn = plaid_service.demo_connect(
+        db,
+        account_id,
+        body.account_type.strip(),
+        body.bank_name.strip(),
+        body.business_name.strip(),
+    )
+    return _connect_response(conn)
+
+
+@router.post("/exchange-public-token", response_model=PlaidConnectResponse)
 def exchange_public_token(body: PlaidExchangeRequest, db: Session = Depends(get_db)):
     account_id = body.account_id or settings.default_account_id
-    conn = plaid_service.exchange_public_token(db, body.public_token, account_id)
-    sync = plaid_service.sync_transactions(db, account_id, replace_existing=True)
-    return {
-        "message": "Bank account connected",
-        "account_id": account_id,
-        "item_id": conn.item_id,
-        "institution_name": conn.institution_name,
-        "sync": sync,
-    }
+    conn = plaid_service.exchange_public_token(
+        db,
+        body.public_token,
+        account_id,
+        account_type=body.account_type,
+        bank_name=body.bank_name,
+    )
+    return _connect_response(conn)
 
 
 @router.post("/sync-transactions", response_model=PlaidSyncResponse)

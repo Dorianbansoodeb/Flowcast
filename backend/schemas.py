@@ -37,6 +37,25 @@ class PlaidLinkTokenResponse(BaseModel):
 class PlaidExchangeRequest(BaseModel):
     public_token: str
     account_id: str = "acct_main"
+    account_type: Optional[str] = None
+    bank_name: Optional[str] = None
+
+
+class PlaidDemoConnectRequest(BaseModel):
+    account_id: str = "acct_main"
+    account_type: str
+    bank_name: str
+    business_name: str
+
+
+class PlaidConnectResponse(BaseModel):
+    message: str
+    account_id: str
+    item_id: str
+    institution_name: Optional[str] = None
+    account_type: Optional[str] = None
+    bank_name: Optional[str] = None
+    is_demo: bool = False
 
 
 class PlaidSyncRequest(BaseModel):
@@ -59,6 +78,9 @@ class PlaidStatusResponse(BaseModel):
     plaid_env: Optional[str] = None
     linked: bool
     institution_name: Optional[str] = None
+    account_type: Optional[str] = None
+    bank_name: Optional[str] = None
+    is_demo: bool = False
     item_id: Optional[str] = None
     transaction_count: int
 

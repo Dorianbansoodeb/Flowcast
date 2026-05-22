@@ -391,7 +391,22 @@ table.data-table th {
   align-items: start;
   padding: 1.5rem 1.75rem;
   border: 1px solid var(--border);
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.onboarding-step-card--active {
+  border-color: rgba(91, 141, 239, 0.45);
+  box-shadow: 0 0 0 1px rgba(91, 141, 239, 0.12);
+}
+
+.onboarding-step-card--done {
+  border-color: rgba(52, 211, 153, 0.35);
+}
+
+.onboarding-step-card--done .onboarding-step-icon {
+  background: var(--safe-bg);
+  color: var(--safe);
+  border-color: rgba(52, 211, 153, 0.25);
 }
 
 .onboarding-step-meta {
@@ -452,6 +467,46 @@ table.data-table th {
   color: var(--text-muted);
 }
 
+.onboarding-status {
+  margin: 0 0 1.25rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius);
+  background: var(--safe-bg);
+  color: var(--safe);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.onboarding-status-sub {
+  color: var(--text-muted);
+}
+
+.onboarding-error {
+  margin: 0 0 1.25rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius);
+  background: var(--critical-bg);
+  color: var(--critical);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.onboarding-demo-hint {
+  margin: 0 0 1.25rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  border: 1px solid rgba(91, 141, 239, 0.2);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.onboarding-demo-hint code {
+  font-size: 0.8em;
+  color: var(--accent);
+}
+
 .onboarding-footnote {
   margin: 2rem 0 0;
   text-align: center;
@@ -459,9 +514,223 @@ table.data-table th {
   color: var(--text-muted);
 }
 
+.onboarding-back {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.onboarding-back:hover {
+  color: var(--accent);
+}
+
+.link-bank-main {
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2rem 2rem 4rem;
+}
+
+.link-bank-section {
+  margin-bottom: 1.25rem;
+  padding: 1.5rem 1.75rem;
+}
+
+.link-bank-section h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.15rem;
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-weight: 600;
+}
+
+.link-bank-section-desc {
+  margin: 0 0 1.1rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.account-type-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.account-type-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.account-type-option:hover {
+  border-color: rgba(91, 141, 239, 0.4);
+}
+
+.account-type-option--selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.account-type-label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.account-type-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+}
+
+.link-bank-search {
+  width: 100%;
+  padding: 0.7rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+
+.link-bank-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.bank-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.65rem;
+}
+
+.bank-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.bank-tile:hover {
+  border-color: rgba(91, 141, 239, 0.4);
+}
+
+.bank-tile--selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.bank-tile-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--bg-card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.bank-tile-name {
+  font-size: 0.8rem;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.link-bank-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.link-bank-field input {
+  padding: 0.7rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+
+.link-bank-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.link-bank-actions {
+  margin-top: 1.5rem;
+  text-align: center;
+}
+
+.link-bank-actions .btn-primary {
+  width: 100%;
+  max-width: 360px;
+  justify-content: center;
+  padding: 0.85rem 1.5rem;
+  font-size: 1rem;
+}
+
+.link-bank-secure-note {
+  margin: 1rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.link-bank-status-loading {
+  text-align: center;
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.link-bank-connected {
+  text-align: center;
+  padding: 2.5rem;
+  max-width: 480px;
+  margin: 2rem auto;
+}
+
+.link-bank-connected h1 {
+  margin-top: 0;
+  font-size: 1.5rem;
+}
+
+.link-bank-connected p {
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+}
+
+.link-bank-empty-search {
+  grid-column: 1 / -1;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
 @media (max-width: 560px) {
   .onboarding-topbar {
     padding: 1rem 1.25rem;
+  }
+
+  .link-bank-main {
+    padding: 1.5rem 1.25rem 3rem;
   }
 
   .onboarding-main {

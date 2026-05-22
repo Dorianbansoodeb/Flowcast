@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
@@ -11,8 +12,9 @@ from sqlalchemy.orm import Session
 
 from config import settings
 from database.models import AccountBalance, PlaidConnection, Transaction
-from mock_data.generator import ENDPOINT_COSTS, record_mock_api_call
+from mock_data.generator import record_mock_api_call, seed_transactions
 
+DEMO_ACCESS_TOKEN = "access-demo"
 _plaid_client = None
 
 
@@ -48,6 +50,66 @@ def _get_plaid_client():
     return _plaid_client
 
 
+def _resolve_institution_name(client, access_token: str, fallback: str) -> str:
+    from plaid.model.country_code import CountryCode
+    from plaid.model.institutions_get_by_id_request import InstitutionsGetByIdRequest
+    from plaid.model.item_get_request import ItemGetRequest
+
+    try:
+        item_resp = client.item_get(ItemGetRequest(access_token=access_token))
+        institution_id = item_resp.get("item", {}).get("institution_id")
+        if not institution_id:
+            return fallback
+        inst_resp = client.institutions_get_by_id(
+            InstitutionsGetByIdRequest(
+                institution_id=institution_id,
+                country_codes=[CountryCode("US")],
+            )
+        )
+        return inst_resp.get("institution", {}).get("name") or fallback
+    except Exception:
+        return fallback
+
+
+def _upsert_connection(
+    db: Session,
+    account_id: str,
+    *,
+    item_id: str,
+    access_token: str,
+    institution_name: Optional[str],
+    account_type: Optional[str],
+    bank_name: Optional[str],
+    is_demo: bool,
+    reset_cursor: bool = True,
+) -> PlaidConnection:
+    existing = db.query(PlaidConnection).filter(PlaidConnection.account_id == account_id).first()
+    if existing:
+        existing.item_id = item_id
+        existing.access_token = access_token
+        existing.institution_name = institution_name
+        existing.account_type = account_type
+        existing.bank_name = bank_name
+        existing.is_demo = is_demo
+        if reset_cursor:
+            existing.sync_cursor = None
+        conn = existing
+    else:
+        conn = PlaidConnection(
+            account_id=account_id,
+            item_id=item_id,
+            access_token=access_token,
+            institution_name=institution_name,
+            account_type=account_type,
+            bank_name=bank_name,
+            is_demo=is_demo,
+        )
+        db.add(conn)
+    db.commit()
+    db.refresh(conn)
+    return conn
+
+
 def create_link_token(account_id: str) -> dict:
     from plaid.model.country_code import CountryCode
     from plaid.model.link_token_create_request import LinkTokenCreateRequest
@@ -55,7 +117,6 @@ def create_link_token(account_id: str) -> dict:
     from plaid.model.products import Products
 
     client = _get_plaid_client()
-    started = time.perf_counter()
     try:
         request = LinkTokenCreateRequest(
             products=[Products("transactions")],
@@ -66,29 +127,49 @@ def create_link_token(account_id: str) -> dict:
         )
         response = client.link_token_create(request)
         link_token = response["link_token"]
-        status = 200
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Plaid link token failed: {exc}") from exc
-    finally:
-        latency = int((time.perf_counter() - started) * 1000)
 
     return {
         "link_token": link_token,
         "expiration": response.get("expiration"),
-        "latency_ms": latency,
-        "status": status,
     }
+
+
+def demo_connect(
+    db: Session,
+    account_id: str,
+    account_type: str,
+    bank_name: str,
+    business_name: str,
+) -> PlaidConnection:
+    display = f"{business_name.strip()} — {bank_name}"
+    item_id = f"demo_{uuid.uuid4().hex[:12]}"
+    conn = _upsert_connection(
+        db,
+        account_id,
+        item_id=item_id,
+        access_token=DEMO_ACCESS_TOKEN,
+        institution_name=display,
+        account_type=account_type,
+        bank_name=bank_name,
+        is_demo=True,
+    )
+    record_mock_api_call(db, "/link/demo-connect", account_id, 200)
+    return conn
 
 
 def exchange_public_token(
     db: Session,
     public_token: str,
     account_id: str,
+    account_type: Optional[str] = None,
+    bank_name: Optional[str] = None,
 ) -> PlaidConnection:
     from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
 
     client = _get_plaid_client()
-    started = time.perf_counter()
+    fallback_name = bank_name or "Linked bank"
     try:
         request = ItemPublicTokenExchangeRequest(public_token=public_token)
         response = client.item_public_token_exchange(request)
@@ -100,43 +181,24 @@ def exchange_public_token(
         raise HTTPException(
             status_code=502, detail=f"Plaid token exchange failed: {exc}"
         ) from exc
-    finally:
-        latency = int((time.perf_counter() - started) * 1000)
 
     record_mock_api_call(db, "/item/public_token/exchange", account_id, status)
+    institution_name = _resolve_institution_name(client, access_token, fallback_name)
 
-    institution_name: Optional[str] = None
-    try:
-        from plaid.model.item_get_request import ItemGetRequest
-
-        item_resp = client.item_get(ItemGetRequest(access_token=access_token))
-        institution_name = item_resp.get("item", {}).get("institution_id")
-    except Exception:
-        pass
-
-    existing = db.query(PlaidConnection).filter(PlaidConnection.account_id == account_id).first()
-    if existing:
-        existing.item_id = item_id
-        existing.access_token = access_token
-        existing.institution_name = institution_name
-        existing.sync_cursor = None
-        conn = existing
-    else:
-        conn = PlaidConnection(
-            account_id=account_id,
-            item_id=item_id,
-            access_token=access_token,
-            institution_name=institution_name,
-        )
-        db.add(conn)
-    db.commit()
-    db.refresh(conn)
-    return conn
+    return _upsert_connection(
+        db,
+        account_id,
+        item_id=item_id,
+        access_token=access_token,
+        institution_name=institution_name,
+        account_type=account_type,
+        bank_name=bank_name or institution_name,
+        is_demo=False,
+    )
 
 
 def _plaid_tx_to_row(account_id: str, tx: dict) -> dict:
     raw = Decimal(str(tx["amount"]))
-    # Plaid: positive = debit (out), negative = credit (in)
     is_income = raw < 0
     stored_amount = abs(raw) if is_income else -abs(raw)
 
@@ -165,8 +227,25 @@ def sync_transactions(db: Session, account_id: str, replace_existing: bool = Tru
     if not conn:
         raise HTTPException(
             status_code=404,
-            detail="No bank account linked. Connect via Plaid first.",
+            detail="No bank account linked. Connect your bank first.",
         )
+
+    if conn.is_demo or conn.access_token == DEMO_ACCESS_TOKEN:
+        if replace_existing:
+            count = seed_transactions(db, account_id)
+        else:
+            count = db.query(Transaction).filter(Transaction.account_id == account_id).count()
+        balance = _update_balance_from_transactions(db, account_id)
+        record_mock_api_call(db, "/transactions/sync", account_id, 200)
+        return {
+            "account_id": account_id,
+            "added": count,
+            "modified": 0,
+            "removed": 0,
+            "sync_pages": 1,
+            "current_balance": float(balance),
+            "institution_name": conn.institution_name,
+        }
 
     from plaid.model.transactions_sync_request import TransactionsSyncRequest
 
@@ -181,7 +260,6 @@ def sync_transactions(db: Session, account_id: str, replace_existing: bool = Tru
         db.query(Transaction).filter(Transaction.account_id == account_id).delete()
 
     while True:
-        started = time.perf_counter()
         try:
             request = TransactionsSyncRequest(
                 access_token=conn.access_token,
@@ -194,20 +272,16 @@ def sync_transactions(db: Session, account_id: str, replace_existing: bool = Tru
             raise HTTPException(
                 status_code=502, detail=f"Plaid transaction sync failed: {exc}"
             ) from exc
-        finally:
-            int((time.perf_counter() - started) * 1000)
 
         record_mock_api_call(db, "/transactions/sync", account_id, status)
         pages += 1
 
         for tx in response.get("added", []):
-            row = _plaid_tx_to_row(account_id, tx)
-            db.merge(Transaction(**row))
+            db.merge(Transaction(**_plaid_tx_to_row(account_id, tx)))
             added_count += 1
 
         for tx in response.get("modified", []):
-            row = _plaid_tx_to_row(account_id, tx)
-            db.merge(Transaction(**row))
+            db.merge(Transaction(**_plaid_tx_to_row(account_id, tx)))
             modified_count += 1
 
         for removed in response.get("removed", []):
@@ -259,11 +333,17 @@ def _update_balance_from_transactions(db: Session, account_id: str) -> Decimal:
 def plaid_status(db: Session, account_id: str) -> dict:
     conn = db.query(PlaidConnection).filter(PlaidConnection.account_id == account_id).first()
     tx_count = db.query(Transaction).filter(Transaction.account_id == account_id).count()
+    is_demo = False
+    if conn is not None:
+        is_demo = bool(getattr(conn, "is_demo", False))
     return {
         "plaid_configured": settings.plaid_configured,
         "plaid_env": settings.plaid_env if settings.plaid_configured else None,
         "linked": conn is not None,
         "institution_name": conn.institution_name if conn else None,
+        "account_type": getattr(conn, "account_type", None) if conn else None,
+        "bank_name": getattr(conn, "bank_name", None) if conn else None,
+        "is_demo": is_demo,
         "item_id": conn.item_id if conn else None,
         "transaction_count": tx_count,
     }

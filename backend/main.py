@@ -14,6 +14,29 @@ from routers import alerts, api_costs, forecast, plaid, transactions
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    _migrate_plaid_connection_columns()
+
+
+def _migrate_plaid_connection_columns():
+    """Add new PlaidConnection columns on existing SQLite DBs."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    if "plaid_connections" not in inspector.get_table_names():
+        return
+    existing = {c["name"] for c in inspector.get_columns("plaid_connections")}
+    alters = []
+    if "account_type" not in existing:
+        alters.append("ALTER TABLE plaid_connections ADD COLUMN account_type VARCHAR(64)")
+    if "bank_name" not in existing:
+        alters.append("ALTER TABLE plaid_connections ADD COLUMN bank_name VARCHAR(128)")
+    if "is_demo" not in existing:
+        alters.append("ALTER TABLE plaid_connections ADD COLUMN is_demo INTEGER DEFAULT 0")
+    if not alters:
+        return
+    with engine.begin() as conn:
+        for stmt in alters:
+            conn.execute(text(stmt))
 
 
 def seed_if_empty():

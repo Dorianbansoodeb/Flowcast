@@ -45,6 +45,9 @@ class PlaidConnection(Base):
     item_id: Mapped[str] = mapped_column(String(128), unique=True)
     access_token: Mapped[str] = mapped_column(String(512))
     institution_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    account_type: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    bank_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
     sync_cursor: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

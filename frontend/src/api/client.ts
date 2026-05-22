@@ -1,21 +1,45 @@
+import { parseApiError } from "./parseError";
+
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
 export const ACCOUNT_ID = "acct_main";
 
+export interface ConnectBankPayload {
+  account_type: string;
+  bank_name: string;
+}
+
+const REQUEST_TIMEOUT_MS = 10_000;
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      "X-Mock-User": "user_demo",
-      ...options?.headers,
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `Request failed: ${res.status}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Mock-User": "user_demo",
+        ...options?.headers,
+      },
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(parseApiError(text, res.status));
+    }
+    return res.json();
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(
+        "Could not reach the Flowcast API. Start the backend: cd backend && uvicorn main:app --reload --port 8000"
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  return res.json();
 }
 
 export interface User {
@@ -102,6 +126,9 @@ export interface PlaidStatus {
   plaid_env: string | null;
   linked: boolean;
   institution_name: string | null;
+  account_type: string | null;
+  bank_name: string | null;
+  is_demo: boolean;
   item_id: string | null;
   transaction_count: number;
 }
@@ -112,17 +139,24 @@ export interface PlaidLinkToken {
   plaid_env: string;
 }
 
-export interface PlaidExchangeResult {
+export interface PlaidConnectResult {
   message: string;
   account_id: string;
   item_id: string;
   institution_name: string | null;
-  sync: {
-    added: number;
-    modified: number;
-    removed: number;
-    current_balance: number;
-  };
+  account_type: string | null;
+  bank_name: string | null;
+  is_demo: boolean;
+}
+
+export interface PlaidSyncResult {
+  account_id: string;
+  added: number;
+  modified: number;
+  removed: number;
+  sync_pages: number;
+  current_balance: number;
+  institution_name?: string | null;
 }
 
 export const api = {
@@ -130,7 +164,7 @@ export const api = {
   getTransactions: (accountId = ACCOUNT_ID) =>
     request<Transaction[]>(`/transactions?account_id=${accountId}`),
   mockLoad: (accountId = ACCOUNT_ID) =>
-    request<{ transactions_created: number }>("/transactions/mock-load", {
+    request<{ transactions_created: number; message?: string }>("/transactions/mock-load", {
       method: "POST",
       body: JSON.stringify({ account_id: accountId, seed_api: true }),
     }),
@@ -158,13 +192,30 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ account_id: accountId }),
     }),
-  exchangePlaidPublicToken: (publicToken: string, accountId = ACCOUNT_ID) =>
-    request<PlaidExchangeResult>("/plaid/exchange-public-token", {
+  connectDemoBank: (
+    payload: ConnectBankPayload & { business_name: string },
+    accountId = ACCOUNT_ID
+  ) =>
+    request<PlaidConnectResult>("/plaid/demo-connect", {
       method: "POST",
-      body: JSON.stringify({ public_token: publicToken, account_id: accountId }),
+      body: JSON.stringify({ account_id: accountId, ...payload }),
+    }),
+  exchangePlaidPublicToken: (
+    publicToken: string,
+    payload: ConnectBankPayload,
+    accountId = ACCOUNT_ID
+  ) =>
+    request<PlaidConnectResult>("/plaid/exchange-public-token", {
+      method: "POST",
+      body: JSON.stringify({
+        public_token: publicToken,
+        account_id: accountId,
+        account_type: payload.account_type,
+        bank_name: payload.bank_name,
+      }),
     }),
   syncPlaidTransactions: (accountId = ACCOUNT_ID, replaceExisting = false) =>
-    request<PlaidExchangeResult["sync"]>("/plaid/sync-transactions", {
+    request<PlaidSyncResult>("/plaid/sync-transactions", {
       method: "POST",
       body: JSON.stringify({
         account_id: accountId,
