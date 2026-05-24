@@ -10,6 +10,7 @@ from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from database.models import ApiUsageLog
+from config import settings
 from mock_data.generator import ENDPOINT_COSTS
 
 SAVINGS_ESTIMATES = {
@@ -193,6 +194,59 @@ def detect_patterns(db: Session, account_id: str) -> list[dict]:
             seen.add(key)
             unique.append(i)
     return unique
+
+
+def get_cost_by_account(db: Session, days: int = 30) -> dict:
+    """Break down API spend across connected demo client accounts."""
+    from mock_data.generator import DEMO_CLIENT_ACCOUNTS
+
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    logs = db.query(ApiUsageLog).filter(ApiUsageLog.time >= cutoff).all()
+
+    by_account: dict[str, dict] = defaultdict(
+        lambda: {"calls": 0, "cost": 0.0, "failures": 0}
+    )
+    for log in logs:
+        acct = log.account_id
+        by_account[acct]["calls"] += 1
+        by_account[acct]["cost"] += float(log.cost_usd)
+        if log.status >= 400:
+            by_account[acct]["failures"] += 1
+
+    accounts = []
+    for acct_id, label in DEMO_CLIENT_ACCOUNTS.items():
+        data = by_account.get(acct_id, {"calls": 0, "cost": 0.0, "failures": 0})
+        if data["calls"] > 0 or acct_id == settings.default_account_id:
+            accounts.append(
+                {
+                    "account_id": acct_id,
+                    "label": label,
+                    "calls": data["calls"],
+                    "cost_usd": round(data["cost"], 4),
+                    "failures": data["failures"],
+                }
+            )
+
+    for acct_id, data in by_account.items():
+        if acct_id not in DEMO_CLIENT_ACCOUNTS:
+            accounts.append(
+                {
+                    "account_id": acct_id,
+                    "label": acct_id,
+                    "calls": data["calls"],
+                    "cost_usd": round(data["cost"], 4),
+                    "failures": data["failures"],
+                }
+            )
+
+    accounts.sort(key=lambda x: x["cost_usd"], reverse=True)
+    total = round(sum(a["cost_usd"] for a in accounts), 4)
+
+    return {
+        "period_days": days,
+        "accounts": accounts,
+        "total_cost_usd": total,
+    }
 
 
 def get_insights(db: Session, account_id: str) -> dict:

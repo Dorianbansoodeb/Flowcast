@@ -121,6 +121,56 @@ export interface ApiInsightsResponse {
   summary: ApiCostSummary;
 }
 
+export interface SpendingBreakdown {
+  account_id: string;
+  period_days: number;
+  total_expenses: number;
+  categories: { name: string; amount: number }[];
+}
+
+export interface CashFlowCalendarResponse {
+  account_id: string;
+  year: number;
+  month: number;
+  heavy_spend_threshold: number;
+  days: {
+    date: string;
+    day: number;
+    weekday: number;
+    income: number;
+    expenses: number;
+    net: number;
+    transaction_count: number;
+    mood: string;
+  }[];
+}
+
+export interface WeeklyDigest {
+  account_id: string;
+  subject: string;
+  preview_text: string;
+  current_balance: number;
+  runway_days: number;
+  biggest_expense?: { merchant: string; amount: number; category: string } | null;
+  forecast_30d_min?: number | null;
+  risk_message?: string | null;
+  delivery_note: string;
+}
+
+export interface AccountCostRow {
+  account_id: string;
+  label: string;
+  calls: number;
+  cost_usd: number;
+  failures: number;
+}
+
+export interface CostByAccount {
+  period_days: number;
+  accounts: AccountCostRow[];
+  total_cost_usd: number;
+}
+
 export interface PlaidStatus {
   plaid_configured: boolean;
   plaid_env: string | null;
@@ -131,6 +181,18 @@ export interface PlaidStatus {
   is_demo: boolean;
   item_id: string | null;
   transaction_count: number;
+  country_codes?: string[];
+}
+
+export interface PlaidInstitution {
+  id: string;
+  name: string;
+}
+
+export interface PlaidInstitutionsResult {
+  institutions: PlaidInstitution[];
+  total: number;
+  source: string;
 }
 
 export interface PlaidLinkToken {
@@ -168,10 +230,39 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ account_id: accountId, seed_api: true }),
     }),
+  quickStartDemo: () =>
+    request<{ message: string; transactions_created: number; is_demo: boolean }>(
+      "/demo/quick-start",
+      { method: "POST" }
+    ),
+  getSpendingBreakdown: (accountId = ACCOUNT_ID, days = 30) =>
+    request<SpendingBreakdown>(
+      `/transactions/analytics/spending?account_id=${accountId}&days=${days}`
+    ),
+  getCashFlowCalendar: (accountId = ACCOUNT_ID, year?: number, month?: number) => {
+    const params = new URLSearchParams({ account_id: accountId });
+    if (year != null) params.set("year", String(year));
+    if (month != null) params.set("month", String(month));
+    return request<CashFlowCalendarResponse>(`/transactions/analytics/calendar?${params}`);
+  },
   getForecast: (accountId = ACCOUNT_ID) =>
     request<Forecast>(`/forecast/${accountId}`),
-  getAlerts: (accountId = ACCOUNT_ID) =>
-    request<AlertsResponse>(`/alerts/${accountId}`),
+  getAlerts: (accountId = ACCOUNT_ID, threshold?: number) => {
+    const params = new URLSearchParams();
+    if (threshold != null) params.set("threshold", String(threshold));
+    const qs = params.toString();
+    return request<AlertsResponse>(
+      `/alerts/${accountId}${qs ? `?${qs}` : ""}`
+    );
+  },
+  getDigestPreview: (accountId = ACCOUNT_ID, threshold?: number) => {
+    const params = new URLSearchParams();
+    if (threshold != null) params.set("threshold", String(threshold));
+    const qs = params.toString();
+    return request<WeeklyDigest>(
+      `/alerts/${accountId}/digest-preview${qs ? `?${qs}` : ""}`
+    );
+  },
   getApiCostSummary: (accountId = ACCOUNT_ID, days = 30) =>
     request<ApiCostSummary>(`/api-costs/summary?account_id=${accountId}&days=${days}`),
   getApiCostTimeline: (accountId = ACCOUNT_ID, days = 14) =>
@@ -180,6 +271,8 @@ export const api = {
     ),
   getApiInsights: (accountId = ACCOUNT_ID) =>
     request<ApiInsightsResponse>(`/api-costs/insights?account_id=${accountId}`),
+  getApiCostByAccount: (days = 30) =>
+    request<CostByAccount>(`/api-costs/by-account?days=${days}`),
   mockApiCall: (endpoint: string, status = 200) =>
     request<{ cost_usd: number }>("/api-costs/mock-call", {
       method: "POST",
@@ -187,6 +280,10 @@ export const api = {
     }),
   getPlaidStatus: (accountId = ACCOUNT_ID) =>
     request<PlaidStatus>(`/plaid/status?account_id=${accountId}`),
+  getPlaidInstitutions: (query = "", offset = 0, count = 100) =>
+    request<PlaidInstitutionsResult>(
+      `/plaid/institutions?query=${encodeURIComponent(query)}&offset=${offset}&count=${count}`
+    ),
   createPlaidLinkToken: (accountId = ACCOUNT_ID) =>
     request<PlaidLinkToken>("/plaid/link-token", {
       method: "POST",

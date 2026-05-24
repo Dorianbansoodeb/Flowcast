@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -5,7 +7,8 @@ from config import settings
 from database.connection import get_db
 from database.models import Transaction
 from mock_data.generator import seed_api_usage, seed_transactions
-from schemas import MockLoadRequest, TransactionOut
+from schemas import MockLoadRequest, TransactionOut, SpendingBreakdownOut, CashFlowCalendarOut
+from services.transaction_analytics import get_cash_flow_calendar, get_spending_breakdown
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -55,3 +58,24 @@ def mock_load_transactions(body: MockLoadRequest, db: Session = Depends(get_db))
         "api_logs_created": api_count,
         "account_id": body.account_id,
     }
+
+
+@router.get("/analytics/spending", response_model=SpendingBreakdownOut)
+def spending_breakdown(
+    account_id: str = Query(default=None),
+    days: int = Query(default=30, ge=7, le=90),
+    db: Session = Depends(get_db),
+):
+    account_id = account_id or settings.default_account_id
+    return SpendingBreakdownOut(**get_spending_breakdown(db, account_id, days))
+
+
+@router.get("/analytics/calendar", response_model=CashFlowCalendarOut)
+def cash_flow_calendar(
+    account_id: str = Query(default=None),
+    year: Optional[int] = Query(default=None),
+    month: Optional[int] = Query(default=None, ge=1, le=12),
+    db: Session = Depends(get_db),
+):
+    account_id = account_id or settings.default_account_id
+    return CashFlowCalendarOut(**get_cash_flow_calendar(db, account_id, year, month))

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
+import { CANADIAN_BANKS, type BankOption } from "../data/canadianBanks";
 import { usePlaidLinkFlow } from "../hooks/usePlaidLinkFlow";
 import { setBankConnected } from "../lib/onboardingStorage";
 
@@ -10,26 +11,20 @@ const ACCOUNT_TYPES = [
   { id: "credit_card", label: "Business credit card", hint: "Track card spend alongside cash" },
 ] as const;
 
-const POPULAR_BANKS = [
-  { id: "chase", name: "Chase" },
-  { id: "bofa", name: "Bank of America" },
-  { id: "wells", name: "Wells Fargo" },
-  { id: "citi", name: "Citi" },
-  { id: "capital_one", name: "Capital One" },
-  { id: "usbank", name: "U.S. Bank" },
-  { id: "pnc", name: "PNC" },
-  { id: "other", name: "Other institution" },
-] as const;
-
 export function LinkBankPage() {
   const navigate = useNavigate();
   const [statusLoading, setStatusLoading] = useState(true);
   const [plaidConfigured, setPlaidConfigured] = useState(false);
   const [alreadyLinked, setAlreadyLinked] = useState(false);
   const [linkedDisplay, setLinkedDisplay] = useState<string | null>(null);
+  const [isDemoLinked, setIsDemoLinked] = useState(false);
 
   const [accountTypeId, setAccountTypeId] = useState<string>(ACCOUNT_TYPES[0].id);
-  const [selectedBankId, setSelectedBankId] = useState<string>(POPULAR_BANKS[0].id);
+  const [banks, setBanks] = useState<BankOption[]>([...CANADIAN_BANKS]);
+  const [banksLoading, setBanksLoading] = useState(false);
+  const [banksTotal, setBanksTotal] = useState<number>(CANADIAN_BANKS.length);
+  const [banksSource, setBanksSource] = useState<"demo" | "plaid">("demo");
+  const [selectedBankId, setSelectedBankId] = useState<string>(CANADIAN_BANKS[0].id);
   const [bankSearch, setBankSearch] = useState("");
   const [businessName, setBusinessName] = useState("Brightline Studio");
   const [submitting, setSubmitting] = useState(false);
@@ -37,9 +32,13 @@ export function LinkBankPage() {
 
   const accountTypeLabel =
     ACCOUNT_TYPES.find((t) => t.id === accountTypeId)?.label ?? accountTypeId;
-  const selectedBankName =
-    POPULAR_BANKS.find((b) => b.id === selectedBankId)?.name ??
-    (bankSearch.trim() || "Your bank");
+
+  const selectedBankName = useMemo(() => {
+    const match = banks.find((b) => b.id === selectedBankId);
+    if (match) return match.name;
+    if (bankSearch.trim()) return bankSearch.trim();
+    return "Your bank";
+  }, [banks, selectedBankId, bankSearch]);
 
   const connectPayload = {
     account_type: accountTypeLabel,
@@ -47,18 +46,21 @@ export function LinkBankPage() {
   };
 
   const returnToOnboarding = useCallback(
-    (institutionName: string, bankName: string) => {
+    (institutionName: string, bankName: string, isDemo: boolean) => {
       setBankConnected({
         accountType: accountTypeLabel,
         bankName,
         institutionName,
+        isDemo,
       });
       navigate("/onboarding", {
         replace: true,
         state: {
           bankConnected: true,
           institutionName,
-          message: `Connected to ${institutionName}. Tap Sync Now to import transactions.`,
+          message: isDemo
+            ? `Demo connection saved for ${institutionName}. Tap Sync Now to load sample transactions.`
+            : `Connected to ${institutionName}. Tap Sync Now to import transactions from your bank.`,
         },
       });
     },
@@ -73,7 +75,8 @@ export function LinkBankPage() {
         const result = await api.exchangePlaidPublicToken(publicToken, connectPayload);
         returnToOnboarding(
           result.institution_name ?? selectedBankName,
-          result.bank_name ?? selectedBankName
+          result.bank_name ?? selectedBankName,
+          false
         );
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to connect bank");
@@ -93,6 +96,47 @@ export function LinkBankPage() {
     onClose: () => setSubmitting(false),
   });
 
+  const loadBanks = useCallback(
+    async (query: string, usePlaid: boolean) => {
+      if (!usePlaid) {
+        const q = query.trim().toLowerCase();
+        const filtered = q
+          ? CANADIAN_BANKS.filter((b) => b.name.toLowerCase().includes(q))
+          : [...CANADIAN_BANKS];
+        setBanks(filtered);
+        setBanksTotal(filtered.length);
+        setBanksSource("demo");
+        if (filtered.length > 0 && !filtered.some((b) => b.id === selectedBankId)) {
+          setSelectedBankId(filtered[0].id);
+        }
+        return;
+      }
+
+      setBanksLoading(true);
+      try {
+        const result = await api.getPlaidInstitutions(query, 0, 100);
+        const list = result.institutions.map((b) => ({ id: b.id, name: b.name }));
+        setBanks(list.length > 0 ? list : [...CANADIAN_BANKS]);
+        setBanksTotal(result.total);
+        setBanksSource("plaid");
+        if (list.length > 0 && !list.some((b) => b.id === selectedBankId)) {
+          setSelectedBankId(list[0].id);
+        }
+      } catch {
+        const q = query.trim().toLowerCase();
+        setBanks(
+          q
+            ? CANADIAN_BANKS.filter((b) => b.name.toLowerCase().includes(q))
+            : [...CANADIAN_BANKS]
+        );
+        setBanksSource("demo");
+      } finally {
+        setBanksLoading(false);
+      }
+    },
+    [selectedBankId]
+  );
+
   useEffect(() => {
     api
       .getPlaidStatus()
@@ -100,7 +144,11 @@ export function LinkBankPage() {
         setPlaidConfigured(status.plaid_configured);
         if (status.linked) {
           setAlreadyLinked(true);
+          setIsDemoLinked(status.is_demo);
           setLinkedDisplay(status.institution_name ?? status.bank_name ?? "Bank account");
+        }
+        if (status.plaid_configured) {
+          loadBanks("", true);
         }
       })
       .catch((e) => {
@@ -112,7 +160,14 @@ export function LinkBankPage() {
         );
       })
       .finally(() => setStatusLoading(false));
-  }, []);
+  }, [loadBanks]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      loadBanks(bankSearch, plaidConfigured);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [bankSearch, plaidConfigured, loadBanks]);
 
   const handleDemoConnect = async () => {
     const name = businessName.trim();
@@ -129,7 +184,8 @@ export function LinkBankPage() {
       });
       returnToOnboarding(
         result.institution_name ?? `${name} — ${selectedBankName}`,
-        result.bank_name ?? selectedBankName
+        result.bank_name ?? selectedBankName,
+        true
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to connect demo bank");
@@ -147,27 +203,28 @@ export function LinkBankPage() {
     await handleDemoConnect();
   };
 
-  const filteredBanks = POPULAR_BANKS.filter((b) =>
-    b.name.toLowerCase().includes(bankSearch.toLowerCase())
-  );
-
-  const busy = submitting || opening || loadingToken;
+  const busy = submitting || opening || loadingToken || banksLoading;
 
   if (alreadyLinked && !statusLoading) {
     return (
       <div className="onboarding-page link-bank-page">
-        <header className="onboarding-topbar">
-          <Link to="/onboarding" className="onboarding-back">
-            ← Back to setup
+        <header className="onboarding-topbar onboarding-topbar--logo-only">
+          <Link to="/onboarding" className="onboarding-brand">
+            Flowcast
           </Link>
-          <span className="onboarding-badge">Link bank</span>
         </header>
         <main className="link-bank-main">
+          <p className="onboarding-back-inline">
+            <Link to="/onboarding">← Back to setup</Link>
+          </p>
           <div className="link-bank-connected card">
             <h1>Bank already connected</h1>
             <p>
-              <strong>{linkedDisplay}</strong> is linked to this workspace. Continue setup
-              or sync transactions from the main onboarding screen.
+              <strong>{linkedDisplay}</strong>{" "}
+              {isDemoLinked
+                ? "(demo — not a real bank login)"
+                : "(linked via Plaid)"}{" "}
+              is connected. Continue setup from the onboarding screen.
             </p>
             <button
               type="button"
@@ -177,7 +234,9 @@ export function LinkBankPage() {
                   state: {
                     bankConnected: true,
                     institutionName: linkedDisplay ?? undefined,
-                    message: "Bank connected. Tap Sync Now to import transactions.",
+                    message: isDemoLinked
+                      ? "Demo bank connected. Tap Sync Now to load sample transactions."
+                      : "Bank connected. Tap Sync Now to import transactions from your bank.",
                   },
                 })
               }
@@ -191,20 +250,22 @@ export function LinkBankPage() {
   }
 
   return (
-    <div className="onboarding-page link-bank-page">
-      <header className="onboarding-topbar">
-        <Link to="/onboarding" className="onboarding-back">
-          ← Back to setup
+      <div className="onboarding-page link-bank-page">
+      <header className="onboarding-topbar onboarding-topbar--logo-only">
+        <Link to="/onboarding" className="onboarding-brand">
+          Flowcast
         </Link>
-        <span className="onboarding-badge">Link bank · Step 1</span>
       </header>
 
       <main className="link-bank-main">
+        <p className="onboarding-back-inline">
+          <Link to="/onboarding">← Back to setup</Link>
+        </p>
         <div className="onboarding-intro">
-          <h1>Connect your business bank</h1>
+          <h1>Connect your Canadian business bank</h1>
           <p>
-            Pick your account type and bank, then sign in securely through Plaid. Flowcast
-            never stores your bank password.
+            Choose your institution from Canadian banks and credit unions. With Plaid
+            enabled, sign in securely — Flowcast never stores your bank password.
           </p>
         </div>
 
@@ -222,9 +283,18 @@ export function LinkBankPage() {
 
         {!plaidConfigured && (
           <p className="onboarding-demo-hint">
-            Running in <strong>demo mode</strong> (no Plaid keys). Add{" "}
+            <strong>Demo mode:</strong> no real bank is connected. You pick a Canadian
+            bank for show — sync loads <em>sample</em> transactions only. Add{" "}
             <code>PLAID_CLIENT_ID</code> and <code>PLAID_SECRET</code> to{" "}
-            <code>backend/.env</code> for live bank linking.
+            <code>backend/.env</code> for a real Plaid connection.
+          </p>
+        )}
+
+        {plaidConfigured && (
+          <p className="onboarding-demo-hint onboarding-demo-hint--live">
+            <strong>Live mode:</strong> Plaid will open with Canadian institutions. Search
+            below loads banks from Plaid ({banksTotal} available
+            {banksSource === "plaid" ? "" : ", showing demo list fallback"}).
           </p>
         )}
 
@@ -248,28 +318,31 @@ export function LinkBankPage() {
         </section>
 
         <section className="link-bank-section card">
-          <h2>2. Choose your bank</h2>
+          <h2>2. Choose your Canadian bank</h2>
           <p className="link-bank-section-desc">
-            Select your institution. {plaidConfigured && "Plaid will open next for sign-in."}
+            Search RBC, TD, Scotiabank, BMO, CIBC, and more.
+            {plaidConfigured && " Plaid Link shows the full directory at sign-in."}
           </p>
           <input
             type="search"
             className="link-bank-search"
-            placeholder="Search banks…"
+            placeholder="Search Canadian banks…"
             value={bankSearch}
             onChange={(e) => setBankSearch(e.target.value)}
             disabled={busy}
-            aria-label="Search banks"
+            aria-label="Search Canadian banks"
           />
+          {banksLoading && (
+            <p className="link-bank-status-loading">Loading institutions…</p>
+          )}
           <div className="bank-grid">
-            {(bankSearch ? filteredBanks : POPULAR_BANKS).map((bank) => (
+            {banks.map((bank) => (
               <button
                 key={bank.id}
                 type="button"
                 className={`bank-tile${selectedBankId === bank.id ? " bank-tile--selected" : ""}`}
                 onClick={() => {
                   setSelectedBankId(bank.id);
-                  setBankSearch("");
                 }}
                 disabled={busy}
               >
@@ -279,23 +352,27 @@ export function LinkBankPage() {
                 <span className="bank-tile-name">{bank.name}</span>
               </button>
             ))}
-            {bankSearch && filteredBanks.length === 0 && (
-              <p className="link-bank-empty-search">No matches — try &quot;Other institution&quot;</p>
+            {!banksLoading && banks.length === 0 && (
+              <p className="link-bank-empty-search">
+                No matches — try another name or use Plaid search at sign-in.
+              </p>
             )}
           </div>
         </section>
 
         <section className="link-bank-section card">
-          <h2>3. {plaidConfigured ? "Secure sign-in" : "Business details"}</h2>
+          <h2>3. {plaidConfigured ? "Secure sign-in" : "Business details (demo)"}</h2>
           {plaidConfigured ? (
             <p className="link-bank-section-desc">
-              Connecting <strong>{selectedBankName}</strong> ({accountTypeLabel}). Plaid will
-              ask for your online banking username and password.
+              Connecting <strong>{selectedBankName}</strong> ({accountTypeLabel}). Plaid
+              opens with all supported Canadian institutions — enter your online banking
+              credentials there.
             </p>
           ) : (
             <>
               <p className="link-bank-section-desc">
-                Demo connection for <strong>{selectedBankName}</strong> ({accountTypeLabel}).
+                Demo only: simulates linking <strong>{selectedBankName}</strong> (
+                {accountTypeLabel}). No credentials are sent anywhere.
               </p>
               <label className="link-bank-field">
                 <span>Business name</span>

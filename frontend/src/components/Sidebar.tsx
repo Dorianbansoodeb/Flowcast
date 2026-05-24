@@ -13,7 +13,7 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <NavLink to="/">
+        <NavLink to="/dashboard">
           <span className="brand-mark">F</span>
           <span className="brand-name">Flowcast</span>
         </NavLink>

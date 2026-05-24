@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, Transaction } from "../api/client";
 import { Loading } from "../components/Loading";
 import { EmptyState } from "../components/EmptyState";
+import { downloadCsv } from "../lib/exportCsv";
 
 export function TransactionsPage() {
   const [txs, setTxs] = useState<Transaction[]>([]);
@@ -68,6 +69,27 @@ export function TransactionsPage() {
         <button className="btn" onClick={mockLoad} disabled={loadingMock}>
           {loadingMock ? "Loading…" : "Reload mock data"}
         </button>
+        {filtered.length > 0 && (
+          <button
+            type="button"
+            className="btn"
+            onClick={() =>
+              downloadCsv(
+                "flowcast-transactions.csv",
+                ["date", "merchant", "category", "amount", "is_income"],
+                filtered.map((t) => [
+                  t.date,
+                  t.merchant_name,
+                  t.category,
+                  t.amount,
+                  t.is_income ? "yes" : "no",
+                ])
+              )
+            }
+          >
+            Export CSV
+          </button>
+        )}
       </div>
 
       {filtered.length === 0 ? (

@@ -7,6 +7,7 @@ from mock_data.generator import record_mock_api_call
 from schemas import MockApiCallRequest
 from services.api_cost_insights import (
     detect_patterns,
+    get_cost_by_account,
     get_cost_summary,
     get_cost_timeline,
     get_insights,
@@ -42,6 +43,14 @@ def api_cost_insights(
 ):
     account_id = account_id or settings.default_account_id
     return get_insights(db, account_id)
+
+
+@router.get("/by-account")
+def api_cost_by_account(
+    days: int = Query(default=30, ge=1, le=90),
+    db: Session = Depends(get_db),
+):
+    return get_cost_by_account(db, days)
 
 
 @router.post("/mock-call")

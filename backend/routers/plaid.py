@@ -9,6 +9,7 @@ from schemas import (
     PlaidConnectResponse,
     PlaidDemoConnectRequest,
     PlaidExchangeRequest,
+    PlaidInstitutionsResponse,
     PlaidLinkTokenRequest,
     PlaidLinkTokenResponse,
     PlaidStatusResponse,
@@ -50,6 +51,16 @@ def create_link_token(body: PlaidLinkTokenRequest):
         expiration=result.get("expiration"),
         plaid_env=settings.plaid_env,
     )
+
+
+@router.get("/institutions", response_model=PlaidInstitutionsResponse)
+def list_institutions(
+    query: str = "",
+    offset: int = 0,
+    count: int = 100,
+):
+    result = plaid_service.search_institutions(query=query, offset=offset, count=count)
+    return PlaidInstitutionsResponse(**result)
 
 
 @router.post("/demo-connect", response_model=PlaidConnectResponse)

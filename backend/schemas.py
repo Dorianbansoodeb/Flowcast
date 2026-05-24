@@ -58,6 +58,17 @@ class PlaidConnectResponse(BaseModel):
     is_demo: bool = False
 
 
+class PlaidInstitutionOut(BaseModel):
+    id: str
+    name: str
+
+
+class PlaidInstitutionsResponse(BaseModel):
+    institutions: list[PlaidInstitutionOut]
+    total: int
+    source: str
+
+
 class PlaidSyncRequest(BaseModel):
     account_id: str = "acct_main"
     replace_existing: bool = False
@@ -83,6 +94,7 @@ class PlaidStatusResponse(BaseModel):
     is_demo: bool = False
     item_id: Optional[str] = None
     transaction_count: int
+    country_codes: list[str] = ["CA"]
 
 
 class MockApiCallRequest(BaseModel):
@@ -123,3 +135,60 @@ class AlertsOut(BaseModel):
     overall_risk: str
     threshold: float
     alerts: list[AlertItem]
+
+
+class SpendingCategory(BaseModel):
+    name: str
+    amount: float
+
+
+class SpendingBreakdownOut(BaseModel):
+    account_id: str
+    period_days: int
+    total_expenses: float
+    categories: list[SpendingCategory]
+
+
+class CalendarDay(BaseModel):
+    date: str
+    day: int
+    weekday: int
+    income: float
+    expenses: float
+    net: float
+    transaction_count: int
+    mood: str
+
+
+class CashFlowCalendarOut(BaseModel):
+    account_id: str
+    year: int
+    month: int
+    heavy_spend_threshold: float
+    days: list[CalendarDay]
+
+
+class WeeklyDigestOut(BaseModel):
+    account_id: str
+    subject: str
+    preview_text: str
+    current_balance: float
+    runway_days: int
+    biggest_expense: Optional[dict] = None
+    forecast_30d_min: Optional[float] = None
+    risk_message: Optional[str] = None
+    delivery_note: str
+
+
+class AccountCostRow(BaseModel):
+    account_id: str
+    label: str
+    calls: int
+    cost_usd: float
+    failures: int
+
+
+class CostByAccountOut(BaseModel):
+    period_days: int
+    accounts: list[AccountCostRow]
+    total_cost_usd: float

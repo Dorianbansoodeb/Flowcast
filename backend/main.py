@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from database.connection import Base, engine, SessionLocal
 from mock_data.generator import seed_api_usage, seed_transactions
-from routers import alerts, api_costs, forecast, plaid, transactions
+from routers import alerts, api_costs, demo, forecast, plaid, transactions
 
 
 def init_db():
@@ -79,6 +79,7 @@ app.include_router(plaid.router)
 app.include_router(forecast.router)
 app.include_router(alerts.router)
 app.include_router(api_costs.router)
+app.include_router(demo.router)
 
 
 @app.get("/health")

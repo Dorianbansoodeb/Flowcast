@@ -63,7 +63,7 @@ def _resolve_institution_name(client, access_token: str, fallback: str) -> str:
         inst_resp = client.institutions_get_by_id(
             InstitutionsGetByIdRequest(
                 institution_id=institution_id,
-                country_codes=[CountryCode("US")],
+                country_codes=_country_codes(),
             )
         )
         return inst_resp.get("institution", {}).get("name") or fallback
@@ -110,8 +110,14 @@ def _upsert_connection(
     return conn
 
 
-def create_link_token(account_id: str) -> dict:
+def _country_codes():
     from plaid.model.country_code import CountryCode
+
+    codes = settings.plaid_countries or ["CA"]
+    return [CountryCode(c) for c in codes]
+
+
+def create_link_token(account_id: str) -> dict:
     from plaid.model.link_token_create_request import LinkTokenCreateRequest
     from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
     from plaid.model.products import Products
@@ -121,7 +127,7 @@ def create_link_token(account_id: str) -> dict:
         request = LinkTokenCreateRequest(
             products=[Products("transactions")],
             client_name="Flowcast",
-            country_codes=[CountryCode("US")],
+            country_codes=_country_codes(),
             language="en",
             user=LinkTokenCreateRequestUser(client_user_id=account_id),
         )
@@ -133,6 +139,54 @@ def create_link_token(account_id: str) -> dict:
     return {
         "link_token": link_token,
         "expiration": response.get("expiration"),
+    }
+
+
+def search_institutions(query: str = "", offset: int = 0, count: int = 100) -> dict:
+    """List or search Canadian (and configured) institutions via Plaid."""
+    from plaid.model.products import Products
+
+    client = _get_plaid_client()
+    country_codes = _country_codes()
+    count = min(max(count, 1), 500)
+
+    try:
+        if query.strip():
+            from plaid.model.institutions_search_request import InstitutionsSearchRequest
+
+            request = InstitutionsSearchRequest(
+                query=query.strip(),
+                country_codes=country_codes,
+                products=[Products("transactions")],
+            )
+            response = client.institutions_search(request)
+            institutions = response.get("institutions", [])
+            total = len(institutions)
+            source = "plaid_search"
+        else:
+            from plaid.model.institutions_get_request import InstitutionsGetRequest
+
+            request = InstitutionsGetRequest(
+                country_codes=country_codes,
+                count=count,
+                offset=offset,
+            )
+            response = client.institutions_get(request)
+            institutions = response.get("institutions", [])
+            total = response.get("total", len(institutions))
+            source = "plaid_list"
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Plaid institutions lookup failed: {exc}"
+        ) from exc
+
+    return {
+        "institutions": [
+            {"id": inst["institution_id"], "name": inst["name"]}
+            for inst in institutions
+        ],
+        "total": total,
+        "source": source,
     }
 
 
@@ -346,4 +400,5 @@ def plaid_status(db: Session, account_id: str) -> dict:
         "is_demo": is_demo,
         "item_id": conn.item_id if conn else None,
         "transaction_count": tx_count,
+        "country_codes": settings.plaid_countries,
     }

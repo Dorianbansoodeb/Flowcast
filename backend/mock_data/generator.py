@@ -17,6 +17,12 @@ from config import settings
 from database.models import AccountBalance, ApiUsageLog, Transaction
 
 # Endpoint costs mimic Plaid-style pricing (USD per call, illustrative)
+DEMO_CLIENT_ACCOUNTS = {
+    "acct_main": "Brightline Studio (primary)",
+    "acct_oak_co": "Oak & Co. Design",
+    "acct_wholesale": "Wholesale Supply Co",
+}
+
 ENDPOINT_COSTS = {
     "/transactions/get": Decimal("0.0040"),
     "/transactions/sync": Decimal("0.0030"),
@@ -152,12 +158,16 @@ def seed_transactions(db: Session, account_id: Optional[str] = None) -> int:
 
 def seed_api_usage(db: Session, account_id: Optional[str] = None, days: int = 14) -> int:
     """Generate mock API call history with some expensive patterns."""
-    account_id = account_id or settings.default_account_id
-    db.query(ApiUsageLog).filter(ApiUsageLog.account_id == account_id).delete()
+    primary = account_id or settings.default_account_id
+    db.query(ApiUsageLog).filter(
+        ApiUsageLog.account_id.in_(list(DEMO_CLIENT_ACCOUNTS.keys()))
+    ).delete(synchronize_session=False)
 
     now = datetime.utcnow()
     logs: list[ApiUsageLog] = []
     endpoints = list(ENDPOINT_COSTS.keys())
+    client_ids = list(DEMO_CLIENT_ACCOUNTS.keys())
+    client_weights = [50, 30, 20]
 
     for day_offset in range(days, 0, -1):
         base = now - timedelta(days=day_offset)
@@ -168,6 +178,7 @@ def seed_api_usage(db: Session, account_id: Optional[str] = None, days: int = 14
                 weights=[30, 25, 15, 10, 8, 7, 5],
             )[0]
             status = 200 if random.random() > 0.06 else random.choice([400, 429, 500])
+            target_account = random.choices(client_ids, weights=client_weights)[0]
             logs.append(
                 ApiUsageLog(
                     time=base + timedelta(
@@ -178,14 +189,15 @@ def seed_api_usage(db: Session, account_id: Optional[str] = None, days: int = 14
                     latency_ms=random.randint(80, 1200),
                     status=status,
                     cost_usd=ENDPOINT_COSTS[ep] if status == 200 else Decimal("0"),
-                    account_id=account_id,
+                    account_id=target_account,
                 )
             )
 
-        # Expensive pattern: burst /transactions/get in one hour
+        # Expensive pattern: burst /transactions/get in one hour (Oak & Co. syncs aggressively)
         if day_offset % 3 == 0:
             burst_time = base.replace(hour=14, minute=0, second=0, microsecond=0)
-            for i in range(5):
+            burst_account = "acct_oak_co"
+            for i in range(8):
                 logs.append(
                     ApiUsageLog(
                         time=burst_time + timedelta(minutes=i * 8),
@@ -193,11 +205,11 @@ def seed_api_usage(db: Session, account_id: Optional[str] = None, days: int = 14
                         latency_ms=random.randint(200, 500),
                         status=200,
                         cost_usd=ENDPOINT_COSTS["/transactions/get"],
-                        account_id=account_id,
+                        account_id=burst_account,
                     )
                 )
 
-        # Repeated failed identity calls
+        # Repeated failed identity calls on wholesale account
         if day_offset % 5 == 0:
             for i in range(4):
                 logs.append(
@@ -207,7 +219,7 @@ def seed_api_usage(db: Session, account_id: Optional[str] = None, days: int = 14
                         latency_ms=random.randint(300, 900),
                         status=500,
                         cost_usd=Decimal("0"),
-                        account_id=account_id,
+                        account_id="acct_wholesale",
                     )
                 )
 

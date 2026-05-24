@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     plaid_client_id: str = ""
     plaid_secret: str = ""
     plaid_env: str = "sandbox"
+    plaid_country_codes: str = "CA"
 
     class Config:
         env_file = ".env"
@@ -19,6 +20,10 @@ class Settings(BaseSettings):
     @property
     def plaid_configured(self) -> bool:
         return bool(self.plaid_client_id and self.plaid_secret)
+
+    @property
+    def plaid_countries(self) -> list[str]:
+        return [c.strip().upper() for c in self.plaid_country_codes.split(",") if c.strip()]
 
 
 settings = Settings()

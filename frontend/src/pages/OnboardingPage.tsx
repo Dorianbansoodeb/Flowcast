@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api, ACCOUNT_ID } from "../api/client";
-import { getBankMeta, syncBankFromApi } from "../lib/onboardingStorage";
+import {
+  clearBankConnection,
+  getBankMeta,
+  syncBankFromApi,
+} from "../lib/onboardingStorage";
+import {
+  clearSetupComplete,
+  isSetupComplete,
+  markSetupComplete,
+} from "../lib/userSettings";
 
 function BankIcon() {
   return (
@@ -48,50 +57,96 @@ function DashboardIcon() {
 type StepId = 1 | 2 | 3;
 
 type OnboardingLocationState = {
+  fresh?: boolean;
   bankConnected?: boolean;
+  transactionsSynced?: boolean;
   message?: string;
   institutionName?: string;
+  syncCount?: number;
 };
 
 export function OnboardingPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const routeState = (location.state ?? {}) as OnboardingLocationState;
-  const cachedMeta = getBankMeta();
+  const isFreshStart = Boolean(routeState.fresh);
 
   const [plaidConfigured, setPlaidConfigured] = useState(false);
-  const [bankConnected, setBankConnected] = useState(Boolean(routeState.bankConnected));
-  const [transactionsSynced, setTransactionsSynced] = useState(false);
-  const [institutionName, setInstitutionName] = useState<string | null>(
-    routeState.institutionName ??
-      cachedMeta?.institutionName ??
-      cachedMeta?.bankName ??
-      null
+  const [bankConnected, setBankConnectedState] = useState(
+    isFreshStart ? false : Boolean(routeState.bankConnected)
   );
-  const [syncCount, setSyncCount] = useState<number | null>(null);
+  const [transactionsSynced, setTransactionsSynced] = useState(
+    isFreshStart ? false : Boolean(routeState.transactionsSynced)
+  );
+  const [institutionName, setInstitutionName] = useState<string | null>(
+    isFreshStart ? null : (routeState.institutionName ?? getBankMeta()?.institutionName ?? null)
+  );
+  const [syncCount, setSyncCount] = useState<number | null>(
+    isFreshStart ? null : (routeState.syncCount ?? null)
+  );
   const [loadingStep, setLoadingStep] = useState<StepId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(
-    routeState.message ?? null
+    isFreshStart ? null : (routeState.message ?? null)
   );
+
+  useEffect(() => {
+    if (isFreshStart) {
+      clearBankConnection();
+      clearSetupComplete();
+      return;
+    }
+    if (!isFreshStart && isSetupComplete()) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isFreshStart, navigate]);
+
+  useEffect(() => {
+    if (isFreshStart) return;
+
+    if (routeState.bankConnected) {
+      setBankConnectedState(true);
+      if (routeState.institutionName) {
+        setInstitutionName(routeState.institutionName);
+      }
+      if (routeState.message) {
+        setStatusMessage(routeState.message);
+      }
+    }
+
+    if (routeState.transactionsSynced) {
+      setTransactionsSynced(true);
+      if (routeState.syncCount != null) {
+        setSyncCount(routeState.syncCount);
+      }
+    }
+  }, [
+    isFreshStart,
+    routeState.bankConnected,
+    routeState.transactionsSynced,
+    routeState.institutionName,
+    routeState.message,
+    routeState.syncCount,
+  ]);
 
   useEffect(() => {
     api
       .getPlaidStatus()
       .then((status) => {
         setPlaidConfigured(status.plaid_configured);
+        if (isFreshStart) return;
         if (status.linked) {
           syncBankFromApi(status);
-          setBankConnected(true);
+          setBankConnectedState(true);
           setInstitutionName(status.institution_name ?? status.bank_name);
         }
-        if (status.transaction_count > 0) {
+        if (status.linked && status.transaction_count > 0) {
           setTransactionsSynced(true);
           setSyncCount(status.transaction_count);
         }
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Could not load status"));
-  }, []);
+  }, [isFreshStart]);
 
   const handleConnectAccount = () => {
     if (bankConnected) return;
@@ -99,7 +154,7 @@ export function OnboardingPage() {
   };
 
   const handleSyncNow = async () => {
-    if (!bankConnected) return;
+    if (!bankConnected || transactionsSynced) return;
     setLoadingStep(2);
     setError(null);
     setStatusMessage(null);
@@ -109,9 +164,8 @@ export function OnboardingPage() {
       const total = result.added + result.modified;
       setSyncCount(total);
       setTransactionsSynced(true);
-      setStatusMessage(
-        `Imported ${total} transactions. You're ready for your dashboard.`
-      );
+      const source = plaidConfigured ? "linked bank account" : "demo bank account";
+      setStatusMessage(`Imported ${total} transactions from your ${source}.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to sync transactions");
     } finally {
@@ -121,11 +175,13 @@ export function OnboardingPage() {
 
   const handleGoToDashboard = () => {
     if (!transactionsSynced) return;
-    navigate("/dashboard");
+    markSetupComplete();
+    navigate("/dashboard", { replace: true, state: { setupComplete: true } });
   };
 
   const step1Done = bankConnected;
   const step2Done = transactionsSynced;
+  const activeStep: StepId = !step1Done ? 1 : !step2Done ? 2 : 3;
 
   const steps: {
     id: StepId;
@@ -142,7 +198,7 @@ export function OnboardingPage() {
       id: 1,
       Icon: BankIcon,
       title: "Link Your Bank Account",
-      description: "Choose your bank and account type, then sign in securely",
+      description: "Securely connect your business bank account",
       buttonLabel: step1Done ? "Connected" : "Connect Account",
       primary: true,
       done: step1Done,
@@ -154,11 +210,12 @@ export function OnboardingPage() {
       Icon: SyncIcon,
       title: "Sync Transactions",
       description: "We'll import your last 24 months of transactions",
-      buttonLabel: step2Done
-        ? `Synced${syncCount != null ? ` (${syncCount})` : ""}`
-        : loadingStep === 2
+      buttonLabel:
+        loadingStep === 2
           ? "Syncing…"
-          : "Sync Now",
+          : step2Done
+            ? `Synced${syncCount != null ? ` (${syncCount})` : ""}`
+            : "Sync Now",
       primary: false,
       done: step2Done,
       enabled: step1Done && !step2Done && loadingStep !== 2,
@@ -179,11 +236,10 @@ export function OnboardingPage() {
 
   return (
     <div className="onboarding-page">
-      <header className="onboarding-topbar">
+      <header className="onboarding-topbar onboarding-topbar--logo-only">
         <Link to="/" className="onboarding-brand">
           Flowcast
         </Link>
-        <span className="onboarding-badge">Setup</span>
       </header>
 
       <main className="onboarding-main">
@@ -212,47 +268,51 @@ export function OnboardingPage() {
 
         <ol className="onboarding-steps">
           {steps.map(
-            ({ id, Icon, title, description, buttonLabel, primary, done, enabled, onClick }) => (
-              <li
-                key={id}
-                className={`onboarding-step-card card${done ? " onboarding-step-card--done" : ""}${enabled ? " onboarding-step-card--active" : ""}`}
-              >
-                <div className="onboarding-step-meta">
-                  <span className="onboarding-step-num">
-                    {done ? "Done" : `Step ${id}`}
-                  </span>
-                  <div className="onboarding-step-icon">
-                    <Icon />
+            ({ id, Icon, title, description, buttonLabel, primary, done, enabled, onClick }) => {
+              const isActive = activeStep === id && !done;
+              const isLocked = !done && !enabled;
+
+              return (
+                <li
+                  key={id}
+                  className={[
+                    "onboarding-step-card card",
+                    done ? "onboarding-step-card--done" : "",
+                    isActive ? "onboarding-step-card--active" : "",
+                    isLocked ? "onboarding-step-card--locked" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  <div className="onboarding-step-meta">
+                    <span className="onboarding-step-num">
+                      {done ? "Done" : `Step ${id}`}
+                    </span>
+                    <div className="onboarding-step-icon">
+                      <Icon />
+                    </div>
                   </div>
-                </div>
-                <div className="onboarding-step-body">
-                  <h2>{title}</h2>
-                  <p>{description}</p>
-                  <button
-                    type="button"
-                    className={
-                      primary
-                        ? `btn btn-primary${!enabled ? " btn-inactive" : ""}`
-                        : `btn${!enabled ? " btn-inactive" : ""}`
-                    }
-                    disabled={!enabled}
-                    onClick={onClick}
-                  >
-                    {buttonLabel}
-                  </button>
-                </div>
-              </li>
-            )
+                  <div className="onboarding-step-body">
+                    <h2>{title}</h2>
+                    <p>{description}</p>
+                    <button
+                      type="button"
+                      className={
+                        primary
+                          ? `btn btn-primary${!enabled ? " btn-inactive" : ""}`
+                          : `btn${!enabled ? " btn-inactive" : ""}`
+                      }
+                      disabled={!enabled}
+                      onClick={onClick}
+                    >
+                      {buttonLabel}
+                    </button>
+                  </div>
+                </li>
+              );
+            }
           )}
         </ol>
-
-        {bankConnected && !transactionsSynced && (
-          <p className="onboarding-footnote">
-            {plaidConfigured
-              ? "After Plaid sign-in, tap Sync Now to pull transactions into Flowcast."
-              : "Demo bank linked — tap Sync Now to load sample transactions."}
-          </p>
-        )}
       </main>
     </div>
   );
